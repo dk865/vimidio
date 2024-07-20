@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vimidio</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi"></script>
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles = [];
+        const splashHeight = 300; // Maximum height the particles will rise
+        const splashDecay = 0.01; // How much particles fade out over time
+        const maxParticles = 50; // Limit to the number of particles for each note
+
+        let midiAccess = null;
+        const activeNotes = new Set(); // Track active notes
+
+        function setup() {
+            navigator.requestMIDIAccess()
+                .then(access => {
+                    midiAccess = access;
+                    for (const input of midiAccess.inputs.values()) {
+                        input.onmidimessage = onMIDIMessage;
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to get MIDI access:', err);
+                    alert('MIDI not supported or failed to access MIDI devices.');
+                });
+        }
+
+        function onMIDIMessage(message) {
+            const [status, note, velocity] = message.data;
+            const isNoteOn = status === 0x90 && velocity > 0;
+            const isNoteOff = status === 0x80 || (status === 0x90 && velocity === 0);
+
+            if (isNoteOn) {
+                activeNotes.add(note);
+                spawnWaterSplash(note);
+            }
+            if (isNoteOff) {
+                activeNotes.delete(note);
+            }
+        }
+
+        function spawnWaterSplash(note) {
+            const noteX = mapNoteToX(note);
+            for (let i = 0; i < 1; i++) { // Adjusted number of particles
+                particles.push({
+                    x: noteX + (Math.random() * 20 - 10), // Add random x offset
+                    y: canvas.height,
+                    size: Math.random() * 10 + 5,
+                    velocityY: Math.random() * -5 - 2, // Slower particles
+                    alpha: 1,
+                    color: `hsla(${Math.random() * 360}, 100%, 50%, 1)` // Multicolored effect
+                });
+            }
+        }
+
+        function mapNoteToX(note) {
+            const noteIndex = note - 40; // A0 is MIDI note 21
+            const noteWidth = canvas.width / (88 - 21); // Assuming 88 keys
+            return (noteIndex) * noteWidth;
+        }
+
+        function updateParticles() {
+            for (const particle of particles) {
+                particle.y += particle.velocityY;
+                particle.alpha -= splashDecay;
+                if (particle.alpha <= 0) {
+                    particles.splice(particles.indexOf(particle), 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (const particle of particles) {
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fillStyle = particle.color;
+                ctx.globalAlpha = particle.alpha;
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1; // Reset alpha for other drawing operations
+        }
+
+        function animate() {
+            if (activeNotes.size > 0) {
+                for (const note of activeNotes) {
+                    spawnWaterSplash(note);
+                }
+            }
+            updateParticles();
+            drawParticles();
+            requestAnimationFrame(animate);
+        }
+
+        setup();
+        animate();
+    </script>
+</body>
+</html>
