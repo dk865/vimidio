@@ -10,58 +10,14 @@
             padding: 0;
             background-color: #000;
             overflow: hidden;
-            font-family: Arial, sans-serif;
         }
         canvas {
             display: block;
-        }
-        #ui-panel {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            border-radius: 5px;
-        }
-        #keyboard {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            height: 100px;
-            display: flex;
-        }
-        .key {
-            flex: 1;
-            border: 1px solid #000;
-            background: #fff;
-            height: 100%;
-        }
-        .key.black {
-            background: #000;
-            height: 70%;
-            width: 50%;
-            margin-left: -25%;
-            z-index: 1;
-        }
-        .key.active {
-            background: #ff0000;
-        }
-        label {
-            display: block;
-            margin-top: 5px;
         }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <div id="ui-panel">
-        <button id="record-button">Record</button>
-        <button id="save-button" style="display:none;">Save Video</button>
-        <label>Color: <input type="color" id="color-picker" value="#0096FF"></label>
-        <label>Speed: <input type="range" id="speed-slider" min="1" max="20" value="5"></label>
-        <label>Size: <input type="range" id="size-slider" min="5" max="30" value="10"></label>
-    </div>
-    <div id="keyboard"></div>
     <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi"></script>
     <script>
         const canvas = document.getElementById('visualizer');
@@ -70,25 +26,12 @@
         canvas.height = window.innerHeight;
 
         const particles = [];
+        const splashHeight = 300; // Maximum height the particles will rise
         const splashDecay = 0.01; // How much particles fade out over time
         const maxParticles = 50; // Limit to the number of particles for each note
-        const keys = []; // Track active keys for visual keyboard
 
         let midiAccess = null;
         const activeNotes = new Set(); // Track active notes
-
-        // UI Elements
-        const recordButton = document.getElementById('record-button');
-        const saveButton = document.getElementById('save-button');
-        const colorPicker = document.getElementById('color-picker');
-        const speedSlider = document.getElementById('speed-slider');
-        const sizeSlider = document.getElementById('size-slider');
-        let recording = false;
-        let recordedNotes = [];
-
-        // MediaRecorder setup
-        let mediaRecorder;
-        let recordedChunks = [];
 
         function setup() {
             navigator.requestMIDIAccess()
@@ -102,12 +45,6 @@
                     console.error('Failed to get MIDI access:', err);
                     alert('MIDI not supported or failed to access MIDI devices.');
                 });
-            
-            createKeyboard();
-            recordButton.addEventListener('click', toggleRecording);
-            saveButton.addEventListener('click', saveVideo);
-            
-            setupMediaRecorder();
         }
 
         function onMIDIMessage(message) {
@@ -117,13 +54,10 @@
 
             if (isNoteOn) {
                 activeNotes.add(note);
-                if (recording) recordedNotes.push({note, time: performance.now()});
                 spawnWaterSplash(note);
-                highlightKey(note, true);
             }
             if (isNoteOff) {
                 activeNotes.delete(note);
-                highlightKey(note, false);
             }
         }
 
@@ -133,17 +67,17 @@
                 particles.push({
                     x: noteX + (Math.random() * 20 - 10), // Add random x offset
                     y: canvas.height,
-                    size: Math.random() * sizeSlider.value + 5,
-                    velocityY: Math.random() * -speedSlider.value - 2, // Speed adjusted by slider
+                    size: Math.random() * 10 + 5,
+                    velocityY: Math.random() * -5 - 2, // Slower particles
                     alpha: 1,
-                    color: colorPicker.value // Color from picker
+                    color: `hsla(${Math.random() * 360}, 100%, 50%, 1)` // Multicolored effect
                 });
             }
         }
 
         function mapNoteToX(note) {
-            const noteIndex = note - 21; // A0 is MIDI note 21
-            const noteWidth = canvas.width / 88; // Assuming 88 keys
+            const noteIndex = note - 40; // A0 is MIDI note 21
+            const noteWidth = canvas.width / (88 - 21); // Assuming 88 keys
             return (noteIndex) * noteWidth;
         }
 
@@ -166,7 +100,7 @@
                 ctx.globalAlpha = particle.alpha;
                 ctx.fill();
             }
-            ctx.globalAlpha = 1; // Reset alpha for other drawing operations
+            ctx.globalAlpha = 1;
         }
 
         function animate() {
@@ -178,63 +112,6 @@
             updateParticles();
             drawParticles();
             requestAnimationFrame(animate);
-        }
-
-        function createKeyboard() {
-            const keyboardContainer = document.getElementById('keyboard');
-            for (let i = 0; i < 88; i++) {
-                const key = document.createElement('div');
-                key.className = 'key' + ((i % 12 === 1 || i % 12 === 3 || i % 12 === 6 || i % 12 === 8 || i % 12 === 10) ? ' black' : '');
-                keyboardContainer.appendChild(key);
-                keys.push(key);
-            }
-        }
-
-        function highlightKey(note, active) {
-            const noteIndex = note - 21;
-            if (keys[noteIndex]) {
-                keys[noteIndex].classList.toggle('active', active);
-            }
-        }
-
-        function toggleRecording() {
-            recording = !recording;
-            recordButton.textContent = recording ? 'Stop Recording' : 'Record';
-            if (recording) {
-                recordedChunks = [];
-                mediaRecorder.start();
-                saveButton.style.display = 'none';
-            } else {
-                mediaRecorder.stop();
-                saveButton.style.display = 'block';
-            }
-        }
-
-        function saveVideo() {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = 'VimidioRecording.webm';
-            document.body.appendChild(a);
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function setupMediaRecorder() {
-            const stream = canvas.captureStream();
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    recordedChunks.push(e.data);
-                }
-            };
-
-            mediaRecorder.onstop = () => {
-                saveButton.style.display = 'block';
-            };
         }
 
         setup();
